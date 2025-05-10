@@ -1,0 +1,165 @@
+import json
+import requests
+from android_utils import log, run_on_ui_thread
+from client_utils import run_on_queue, get_last_fragment, send_message
+from org.telegram.ui.ActionBar import AlertDialog
+import os
+
+__id__ = "plugin_installer"
+__name__ = "Plugin Installer"
+__description__ = "Install and manage plugins from remote repository [.plugins]"
+__author__ = "@systemxplore, @pidormodules"
+__min_version__ = "11.9.0"
+
+REPO_URL = "https://raw.githubusercontent.com/cryptexctl/someday/refs/heads/main/plugins.json"
+PLUGINS_DIR = "/data/user/0/com.exteragram.messenger/files/plugins/"
+
+class PluginData:
+    def __init__(self, name, url, version, description=None, author=None, min_version=None):
+        self.name = name
+        self.url = url
+        self.version = version
+        self.description = description
+        self.author = author
+        self.min_version = min_version
+
+    @staticmethod
+    def from_json(data):
+        return PluginData(
+            name=data.get("name"),
+            url=data.get("url"),
+            version=data.get("version"),
+            description=data.get("description"),
+            author=data.get("author"),
+            min_version=data.get("min_version")
+        )
+
+class PluginInstallerPlugin(BasePlugin):
+    def __init__(self):
+        super().__init__()
+        self.progress_dialog = None
+        
+    def fetch_plugins_list(self):
+        try:
+            response = requests.get(REPO_URL, timeout=10)
+            if response.status_code != 200:
+                return None
+            return response.json()
+        except Exception as e:
+            log(f"Error fetching plugins list: {str(e)}")
+            return None
+
+    def download_plugin(self, url):
+        try:
+            response = requests.get(url, timeout=10)
+            if response.status_code != 200:
+                return None
+            return response.content
+        except Exception as e:
+            log(f"Error downloading plugin: {str(e)}")
+            return None
+
+    def install_plugin(self, plugin_data):
+        try:
+            content = self.download_plugin(plugin_data.url)
+            if not content:
+                return False
+
+            filename = os.path.basename(plugin_data.url)
+            if not filename.endswith('.plugin'):
+                filename += '.plugin'
+
+            filepath = os.path.join(PLUGINS_DIR, filename)
+            with open(filepath, 'wb') as f:
+                f.write(content)
+            return True
+        except Exception as e:
+            log(f"Error installing plugin: {str(e)}")
+            return False
+
+    def process_plugins(self, peer):
+        try:
+            plugins_json = self.fetch_plugins_list()
+            if not plugins_json:
+                return "Failed to fetch plugins list from repository"
+
+            plugins_data = [PluginData.from_json(plugin) for plugin in plugins_json.get("plugins", [])]
+            if not plugins_data:
+                return "No plugins found in repository"
+
+            message_parts = ["Available Plugins:\n"]
+            for plugin in plugins_data:
+                status = "[Installed]" if self.is_plugin_installed(plugin) else "[Not Installed]"
+                message_parts.append(f"• {plugin.name} {plugin.version} {status}")
+                if plugin.description:
+                    message_parts.append(f"  {plugin.description}")
+                if plugin.author:
+                    message_parts.append(f"  Author: {plugin.author}")
+                message_parts.append("")
+
+            return "\n".join(message_parts)
+        except Exception as e:
+            log(f"Error processing plugins: {str(e)}")
+            return f"Error: {str(e)}"
+
+    def is_plugin_installed(self, plugin_data):
+        filename = os.path.basename(plugin_data.url)
+        if not filename.endswith('.plugin'):
+            filename += '.plugin'
+        return os.path.exists(os.path.join(PLUGINS_DIR, filename))
+
+    def uninstall_plugin(self, plugin_data):
+        try:
+            filename = os.path.basename(plugin_data.url)
+            if not filename.endswith('.plugin'):
+                filename += '.plugin'
+            
+            filepath = os.path.join(PLUGINS_DIR, filename)
+            if os.path.exists(filepath):
+                os.remove(filepath)
+                return True
+            return False
+        except Exception as e:
+            log(f"Error uninstalling plugin: {str(e)}")
+            return False
+
+    def on_send_message_hook(self, account, params) -> HookResult:
+        if not isinstance(params.message, str) or not params.message.startswith(".plugins"):
+            return HookResult()
+
+        try:
+            parts = params.message.strip().split(" ", 1)
+            command = parts[0]
+            
+            if len(parts) > 1:
+                action = parts[1].strip()
+                if action.startswith("install "):
+                    plugin_name = action[8:].strip()
+                    # TODO: Implement install command
+                    params.message = f"Install command for {plugin_name} not implemented yet"
+                    return HookResult(strategy=HookStrategy.MODIFY, params=params)
+                elif action.startswith("uninstall "):
+                    plugin_name = action[10:].strip()
+                    # TODO: Implement uninstall command
+                    params.message = f"Uninstall command for {plugin_name} not implemented yet"
+                    return HookResult(strategy=HookStrategy.MODIFY, params=params)
+                else:
+                    params.message = "Usage: .plugins [install/uninstall] [plugin_name]"
+                    return HookResult(strategy=HookStrategy.MODIFY, params=params)
+
+            self.progress_dialog = AlertDialog(get_last_fragment().getParentActivity(), 3)
+            self.progress_dialog.show()
+
+            def process():
+                message = self.process_plugins(params.peer)
+                params.message = message
+                self.progress_dialog.dismiss()
+                send_message(params)
+
+            run_on_queue(process)
+            return HookResult(strategy=HookStrategy.CANCEL)
+
+        except Exception as e:
+            log(f"Plugin installer error: {str(e)}")
+            params.message = f"Error: {str(e)}"
+            return HookResult(strategy=HookStrategy.MODIFY, params=params) 

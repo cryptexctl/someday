@@ -1,0 +1,12 @@
+{
+    "plugins": [
+      {
+        "name": "uptime",
+        "url": "https://raw.githubusercontent.com/cryptexctl/someday/refs/heads/main/plugins/uptime.plugin",
+        "version": "1.0.0",
+        "description": "Uptime plugin for Extergram",
+        "author": "@systemxplore, @pidormodules",
+        "min_version": "11.9.0"
+      }
+    ]
+  }
