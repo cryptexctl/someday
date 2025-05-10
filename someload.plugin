@@ -1,0 +1,6 @@
+__id__ = "somedl"
+__name__ = "SomeDL - Best plugins repo manager!"
+__description__ = "Best plugins repo manager!"
+__author__ = "@pidormodules, @systemxplore"
+__min_version__ = "11.9.0"
+__icon__ = "exteraPack/12"
