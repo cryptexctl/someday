@@ -1,0 +1,48 @@
+from base_plugin import HookResult, HookStrategy
+from android_utils import log
+import time
+from java.lang import System
+from android.os import SystemClock
+
+__id__ = "uptime"
+__name__ = "Uptime"
+__description__ = "Shows system uptime and ping response time [.duptime]"
+__author__ = "platon"
+__min_version__ = "11.9.0"
+
+class UptimePlugin(BasePlugin):
+    def format_uptime(self, uptime_seconds):
+        days = uptime_seconds // (24 * 3600)
+        uptime_seconds %= (24 * 3600)
+        hours = uptime_seconds // 3600
+        uptime_seconds %= 3600
+        minutes = uptime_seconds // 60
+        seconds = uptime_seconds % 60
+        
+        return f"{int(days)} day(s), {int(hours)}:{int(minutes):02d}:{int(seconds):02d}"
+
+    def on_send_message_hook(self, account, params) -> HookStrategy:
+        if not isinstance(params.message, str) or params.message.strip() != ".duptime":
+            return HookResult()
+
+        try:
+            # Get start time for ping calculation
+            start_time = time.time()
+            
+            # Get system uptime in milliseconds and convert to seconds
+            uptime_ms = SystemClock.elapsedRealtime()
+            uptime_seconds = int(uptime_ms / 1000)
+            
+            # Calculate ping time
+            ping_time = (time.time() - start_time) * 1000  # Convert to milliseconds
+            
+            # Format the message
+            message = f"⚡️ Ping: {ping_time:.3f} 𝚖𝚜\n🕓 Uptime: {self.format_uptime(uptime_seconds)}"
+            
+            params.message = message
+            return HookResult(strategy=HookStrategy.MODIFY, params=params)
+            
+        except Exception as e:
+            log(f"Uptime plugin error: {str(e)}")
+            params.message = f"Error: {str(e)}"
+            return HookResult(strategy=HookStrategy.MODIFY, params=params) 
